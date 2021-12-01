@@ -1795,6 +1795,8 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	panic(fmt.Sprintf("Trying to put object to %q/%q", bucket, object))
+
 	// Create the object..
 	objInfo, err := putObject(ctx, bucket, object, pReader, opts)
 	if err != nil {

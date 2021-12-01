@@ -19,6 +19,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -57,6 +58,32 @@ var (
 	IsStringEqual = isStringEqual
 )
 
+// ROOT_DIRECTORY is an s3 bucket or sub-bucket that all minio actions will
+// be performed relative to (in theory)
+var ROOT_DIRECTORY = "ib-importexport-minio-data-internal/env-4/"
+
+// NewBucketAndKey converts a requests bucket/key to one in the ROOT_DIRECTORY
+func NewBucketAndKey(bucket, key string) (string, string) {
+	fullPath := ExtendedPath(bucket, key)
+	parts := strings.SplitN(fullPath, "/", 1)
+	return parts[0], parts[1]
+}
+
+// ExtendedPath gets the full path, "bucket/key" for an object
+func ExtendedPath(bucket, key string) string {
+	if key == "" {
+		return fmt.Sprintf("%s%s", ROOT_DIRECTORY, bucket)
+	}
+	return fmt.Sprintf("%s%s/%s", ROOT_DIRECTORY, bucket, key)
+}
+
+// BaseBucketAndKey converts a responses bucket/key from one in the ROOT_DIRECTORY
+func BaseBucketAndKey(bucket, key string) (string, string) {
+	fullPath := strings.TrimPrefix(ExtendedPath(bucket, key), ROOT_DIRECTORY)
+	parts := strings.SplitN(fullPath, "/", 1)
+	return parts[0], parts[1]
+}
+
 // FromMinioClientMetadata converts minio metadata to map[string]string
 func FromMinioClientMetadata(metadata map[string][]string) map[string]string {
 	mm := make(map[string]string, len(metadata))
@@ -86,11 +113,12 @@ func FromMinioClientListPartsInfo(lopr minio.ListObjectPartsResult) ListPartsInf
 		}
 		return toParts
 	}
+	bucket, key := BaseBucketAndKey(lopr.Bucket, lopr.Key)
 
 	return ListPartsInfo{
 		UploadID:             lopr.UploadID,
-		Bucket:               lopr.Bucket,
-		Object:               lopr.Key,
+		Bucket:               bucket,
+		Object:               key,
 		StorageClass:         "",
 		PartNumberMarker:     lopr.PartNumberMarker,
 		NextPartNumberMarker: lopr.NextPartNumberMarker,
@@ -105,6 +133,7 @@ func FromMinioClientListMultipartsInfo(lmur minio.ListMultipartUploadsResult) Li
 	uploads := make([]MultipartInfo, len(lmur.Uploads))
 
 	for i, um := range lmur.Uploads {
+
 		uploads[i] = MultipartInfo{
 			Object:    um.Key,
 			UploadID:  um.UploadID,
@@ -137,10 +166,11 @@ func FromMinioClientListMultipartsInfo(lmur minio.ListMultipartUploadsResult) Li
 func FromMinioClientObjectInfo(bucket string, oi minio.ObjectInfo) ObjectInfo {
 	userDefined := FromMinioClientMetadata(oi.Metadata)
 	userDefined[xhttp.ContentType] = oi.ContentType
+	bucket, key := BaseBucketAndKey(bucket, oi.Key)
 
 	return ObjectInfo{
 		Bucket:          bucket,
-		Name:            oi.Key,
+		Name:            key,
 		ModTime:         oi.LastModified,
 		Size:            oi.Size,
 		ETag:            canonicalizeETag(oi.ETag),
@@ -162,7 +192,8 @@ func FromMinioClientListBucketV2Result(bucket string, result minio.ListBucketV2R
 
 	prefixes := make([]string, len(result.CommonPrefixes))
 	for i, p := range result.CommonPrefixes {
-		prefixes[i] = p.Prefix
+		_, prefix := BaseBucketAndKey(bucket, p.Prefix)
+		prefixes[i] = prefix
 	}
 
 	return ListObjectsV2Info{
@@ -185,7 +216,8 @@ func FromMinioClientListBucketResult(bucket string, result minio.ListBucketResul
 
 	prefixes := make([]string, len(result.CommonPrefixes))
 	for i, p := range result.CommonPrefixes {
-		prefixes[i] = p.Prefix
+		_, prefix := BaseBucketAndKey(bucket, p.Prefix)
+		prefixes[i] = prefix
 	}
 
 	return ListObjectsInfo{
@@ -206,7 +238,8 @@ func FromMinioClientListBucketResultToV2Info(bucket string, result minio.ListBuc
 
 	prefixes := make([]string, len(result.CommonPrefixes))
 	for i, p := range result.CommonPrefixes {
-		prefixes[i] = p.Prefix
+		_, prefix := BaseBucketAndKey(bucket, p.Prefix)
+		prefixes[i] = prefix
 	}
 
 	return ListObjectsV2Info{
